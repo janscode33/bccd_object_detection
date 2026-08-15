@@ -65,6 +65,7 @@ def optimize_split(cell_count_rb, cell_count_wb, cell_count_pl,
         # print(f"Initial WBC test loss: {current_test_loss_wb:.4f}")
         # print(f"Initial PL train loss: {current_train_loss_pl:.4f}")
         # print(f"Initial PL test loss: {current_test_loss_pl:.4f}")
+        print()
         print(f"Initial train loss: {current_combined_loss_train:.4f}")
         print(f"Initial test loss: {current_combined_loss_test:.4f}")
         print(f"Initial Combined Loss: {current_combined_loss:.4f}")
