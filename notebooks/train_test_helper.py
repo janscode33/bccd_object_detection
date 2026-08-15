@@ -120,8 +120,8 @@ def optimize_split(cell_count_rb, cell_count_wb, cell_count_pl,
     Only accepts a swap if it reduces the loss.
     """
     # Make local copies so we do not modify the original lists
-    train_idx = list(train_idx)
-    test_idx  = list(test_idx)
+    train_idx = list(train_idx).copy()
+    test_idx  = list(test_idx).copy()
     cell_count_rb = np.asarray(cell_count_rb).copy()
     cell_count_wb = np.asarray(cell_count_wb).copy()
     cell_count_pl = np.asarray(cell_count_pl).copy()
