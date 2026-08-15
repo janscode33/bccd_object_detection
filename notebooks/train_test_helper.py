@@ -1,6 +1,91 @@
 import numpy as np
 from scipy.stats import wasserstein_distance
 from tqdm import tqdm
+import os
+import xml.etree.ElementTree as ET
+
+def get_cell_counts(anno_dir):
+    """
+    Function that intakes a string for the annotations directory and outputs the total RBC, WBC, and Platelet counts
+    respectively. Used for distribution-matched splitting of train/test/val later on.
+
+    OUTPUT:
+    xml_data: list of dicts with primary equal to the filename minus extension.
+              nested dicts under that key mirror XML format.
+              Ex: {'BloodImage_00315': 
+                    {'RBC1': 
+                            {'name': 'RBC', 'xmin': 164, 'xmax': 297, 'ymin': 261, 'ymax': 364, 'truncated': 0, 'difficult': 0}, 
+                    'RBC2': {'name': 'RBC', 'xmin': 15, 'xmax': 148, 'ymin': 66, 'ymax': 169, 'truncated': 0, 'difficult': 0}, 
+                                            .
+                                            .
+                                            .
+                    WBC1': {'name': 'WBC', 'xmin': 250, 'xmax': 487, 'ymin': 343, 'ymax': 480, 'truncated': 1, 'difficult': 0}, 
+                    'Platelets1': {'name': 'Platelets', 'xmin': 567, 'xmax': 619, 'ymin': 234, 'ymax': 277, 'truncated': 0, 'difficult': 0}, 
+                    'counts': {'RBC': 10, 'WBC': 1, 'Platelets': 1}}}
+    rbc_counts: list of RBC counts for every image
+    wbc_counts: list of WBC counts for every image
+    platelet_count: list of Platelet counts for every image
+    """
+    # Getting Annotations and Exploring Blood Cell counts. This is to find out if the dataset is balanced or not.
+    files_in_anno_dir = sorted([
+            f for f in os.listdir(anno_dir) if f.endswith(".xml")
+        ]) #sorts files to ensure indices are always pointing to correct filenames
+    
+    # Parsing the XML files and converting them to JSON format for easier analysis
+    xml_data = []
+    for f in files_in_anno_dir:
+        with open(os.path.join(anno_dir, f)) as xml_file:
+            xml_data.append({f[:-4]: {}})
+            tree = ET.parse(xml_file)
+            root = tree.getroot()
+            names = []
+            rbc_count = 0
+            wbc_count = 0
+            platelet_count = 0
+            for b in root.findall('object'):
+                name = b.find('name').text
+                if name.lower() == 'RBC'.lower():
+                    rbc_count += 1
+                    new_key = name + str(rbc_count)
+                elif name.lower() == 'WBC'.lower():
+                    wbc_count += 1
+                    new_key = name + str(wbc_count)
+                elif name.lower() == 'Platelets'.lower():
+                    platelet_count += 1
+                    new_key = name + str(platelet_count)
+                bounding_box = b.find('bndbox')
+                xmin = int(bounding_box.find('xmin').text)
+                xmax = int(bounding_box.find('xmax').text)
+                ymin = int(bounding_box.find('ymin').text)
+                ymax = int(bounding_box.find('ymax').text)
+                trunc = int(b.find('truncated').text)
+                difficult = int(b.find('difficult').text)
+                names.append(name)
+                xml_data[-1][f[:-4]][new_key] = {
+                    'name': name,
+                    'xmin': xmin,
+                    'xmax': xmax,
+                    'ymin': ymin,
+                    'ymax': ymax,
+                    'truncated': trunc,
+                    'difficult': difficult
+                }
+            xml_data[-1][f[:-4]]['counts'] = {
+                'RBC': rbc_count,
+                'WBC': wbc_count,
+                'Platelets': platelet_count
+            }
+
+    #Extracting the counts of each blood cell type from the JSON data
+    rbc_counts = []
+    wbc_counts = []
+    platelet_counts = []
+    for data in xml_data:
+        for key in data.keys():
+            rbc_counts.append(data[key]['counts']['RBC'])
+            wbc_counts.append(data[key]['counts']['WBC'])
+            platelet_counts.append(data[key]['counts']['Platelets'])
+    return xml_data, rbc_counts, wbc_counts, platelet_counts
 
 def compute_loss(cell_count, train_idx, test_idx):
     """
@@ -27,7 +112,7 @@ def compute_loss(cell_count, train_idx, test_idx):
     return train_loss, test_loss
 
 def optimize_split(cell_count_rb, cell_count_wb, cell_count_pl,
-                   train_idx, test_idx, n_iterations=9000, verbose=True):
+                   train_idx, test_idx, n_iterations=9000, verbose=True, only_idx = False):
     """
     Hill-climbing optimizer.
     
@@ -130,10 +215,15 @@ def optimize_split(cell_count_rb, cell_count_wb, cell_count_pl,
             all_test_losses_pl.append(current_test_loss_pl)
             all_train_losses.append(current_combined_loss_train)
             all_test_losses.append(current_combined_loss_test)
-    print()
-    print(f"Final Train Loss: {current_combined_loss_train:.4f}")
-    print(f"Final Test Loss: {current_combined_loss_test:.4f}")
-    print(f"Final Combined Loss: {current_combined_loss:.4f}")
-    return train_idx, test_idx, all_train_losses_rb,\
-        all_test_losses_rb, all_train_losses_wb, all_test_losses_wb,\
-        all_train_losses_pl, all_test_losses_pl, all_train_losses, all_test_losses
+    if verbose:
+        print()
+        print(f"Final Train Loss: {current_combined_loss_train:.4f}")
+        print(f"Final Test Loss: {current_combined_loss_test:.4f}")
+        print(f"Final Combined Loss: {current_combined_loss:.4f}")
+
+    if only_idx:
+        return train_idx, test_idx
+    else:
+        return train_idx, test_idx, all_train_losses_rb,\
+            all_test_losses_rb, all_train_losses_wb, all_test_losses_wb,\
+            all_train_losses_pl, all_test_losses_pl, all_train_losses, all_test_losses
